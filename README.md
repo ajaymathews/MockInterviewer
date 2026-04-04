@@ -1,4 +1,4 @@
-# AI Mock Interviewer v2.0
+# AI Mock Interviewer
 
 An advanced, highly-sophisticated AI mock interviewer simulator built with PyQt5, Gemini Flash, deepface emotion telemetry, and Microsoft Edge Neural voices.
 
