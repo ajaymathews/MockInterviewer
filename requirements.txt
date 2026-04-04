@@ -1,0 +1,10 @@
+PyQt5
+google-generativeai
+opencv-python
+deepface
+SpeechRecognition
+PyAudio
+python-dotenv
+PyPDF2
+edge-tts
+pygame
