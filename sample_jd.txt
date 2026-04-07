@@ -1,0 +1,25 @@
+The opportunity here is for a Degree or MSc qualified Electrical Engineer with a strong background in embedded software programming to leverage their skills in the architecture and design of software modules and gain experience in understanding customer usability and how software and hardware features must come together seamlessly to enhance the customer experience. You have excellent communication and presentation skills, demonstrated through technical publications, presentations, trainings, executive briefings, etc. You are highly adept at collaboration among top-thinkers and engineers alike, ready to mentor and guide, and help to elevate the knowledge and skills of the team around you.
+
+KEY RESPONSIBILITIES:
+
+    Develop integration of RF data converters firmware following product features and targeted capabilities, close application guidance, and drive technical specifications for RF SoC to meet those requirements, and provide technical direction to execution teams
+    Comprehend the SOC as a complete system which includes HW (Silicon), FW, BIOS & SW and ensure that FW, BIOS & SW are aligned to enable all features, optimizing for targeted performance and power
+    Work cross functionally with IP/Domain architects to identify and assess complex technical issues/risks and develop architectural solutions to achieve product requirements
+    Knowledge sharing and other contributions to Platform & System Architecture
+    As an overall product owner, responsible for application guidance and technical solutions for marketing/feature change requests
+    Work closely with Design teams for performance characterization, Design concept validation, Test plan reviews, Emulation plans, Pre-Si bug resolution and Performance/Power Verification sign offs
+    Support Post-Si teams for Product Performance, Power and functional issues debug/resolution
+
+
+PREFERRED EXPERIENCE:
+
+    Strong embedded software programming skills are required in order to enable GUI and drivers for internal and external application solutions
+    Experience in embedded software systems including specification, design, simulation and validation
+    DSP understanding and use of associated tools such as MatLab and SimuLink.
+    Proficient on scripting (Python, TCL) and Linux knowledge are highly desirable
+    Confortable in C, NI LabVIEW, NI TestStand (NI certified developer preferred) for test bench automation
+    Knowledge of automated test equipment design and architecture is welcome
+    Experience in the lab characterizing and debugging RF components and systems is welcome
+    Ability to work well as part of a team
+    Strong problem solving skills
+    Foundation in Systems & SoC architecture, with expertise in RFSoC Driver development is very welcome

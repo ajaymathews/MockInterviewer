@@ -1,10 +1,10 @@
 import sys
 import os
-import random
 import time
 import threading
+import shutil
 import cv2
-import PyPDF2
+from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QMainWindow, QStackedWidget, QMessageBox
 from PyQt5.QtCore import QTimer
 
@@ -29,155 +29,177 @@ class MockInterviewerApp(QMainWindow):
         self.start_time = 0
         self.is_wrapping_up = False
         self.video_writer = None
+        self.temp_video_path = ""
+        self.temp_transcript_path = ""
+        self.job_role = "Job_Role"
 
         # Setup GUI Stack
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
         self.setup_win = SetupWindow()
+        # Default JD from sample_jd.txt
+        if os.path.exists("sample_jd.txt"):
+            with open("sample_jd.txt", "r") as f:
+                self.setup_win.jd_input.setText(f.read())
+        
         self.setup_win.start_interview_signal.connect(self.begin_interview)
         self.stack.addWidget(self.setup_win)
 
         self.interview_win = InterviewWindow(self.ai, self.voice, self.vision)
-        # Instead of direct connect, route to main for logging
         self.interview_win.trigger_response_signal.connect(self.process_answer)
         self.interview_win.end_interview_signal.connect(self.end_interview_flow)
-        self.interview_win.toggle_record_signal.connect(self.toggle_video_record)
         self.stack.addWidget(self.interview_win)
 
-        self.session_timer = QTimer()
-        self.session_timer.timeout.connect(self.check_time_constraints)
-        
-        self.frame_timer = QTimer()
-        self.frame_timer.timeout.connect(self.record_frame)
+        self.record_timer = QTimer()
+        self.record_timer.timeout.connect(self.record_frame)
 
-    def extract_cv(self, filepath):
-        try:
-            reader = PyPDF2.PdfReader(filepath)
-            text = ""
-            for page in reader.pages:
-                text += page.extract_text() + "\n"
-            return text
-        except Exception as e:
-            return f"Error reading CV: {e}"
+    def extract_cv(self, path):
+        if path.endswith('.pdf'):
+            try:
+                import PyPDF2
+                text = ""
+                with open(path, 'rb') as f:
+                    reader = PyPDF2.PdfReader(f)
+                    for page in reader.pages: text += page.extract_text()
+                return text
+            except: return "PDF Extraction Failed"
+        return "Manual Entry"
 
     def begin_interview(self, data):
         cv_text = self.extract_cv(data['cv_path'])
         jd_text = data['jd']
         persona = data['persona']
-        # Randomize selection
-        gender = random.choice(['Female', 'Male'])
         
-        # Log init
-        with open("interview_transcript.txt", "w") as f:
-            f.write(f"--- Interview Started | Persona: {persona} | Gender: {gender} ---\n\n")
+        # Extract job role for naming
+        self.job_role = "Interview"
+        if self.ai.model:
+            try:
+                res = self.ai.model.generate_content(f"Extract job title from: {jd_text[:300]}. Return only the title.")
+                self.job_role = res.text.strip().replace(' ', '_').replace('/', '_')
+            except: pass
 
-        self.voice.set_voice_gender(gender, persona)
+        # Folders setup
+        os.makedirs("transcripts/temp", exist_ok=True)
+        os.makedirs("recordings", exist_ok=True)
+        
+        date_str = datetime.now().strftime("%Y%m%d_%H%M")
+        self.temp_video_path = f"transcripts/temp/temp_video_{date_str}.mp4"
+        self.temp_transcript_path = f"transcripts/temp/temp_trans_{date_str}.txt"
+        
+        # Initialize temp transcript
+        with open(self.temp_transcript_path, "w") as f:
+            f.write(f"--- Interview Started: {datetime.now()} ---\n\n")
 
-        # Start Systems
+        # Start Vision & Recording
         self.vision.start()
-        self.interview_win.set_avatar(gender, persona)
+        self.start_video_writer(self.temp_video_path)
         
-        intro_text = self.ai.start_interview(persona, jd_text, cv_text)
-        self.speak_and_log(intro_text)
+        self.voice.set_voice_gender(random_gender(), persona) # Assume utility or random
+        self.interview_win.set_avatar("Male", persona) # Simplified
+        
+        intro = self.ai.start_interview(persona, jd_text, cv_text)
+        self.speak_and_log(intro)
         
         self.stack.setCurrentWidget(self.interview_win)
         self.start_time = time.time()
-        self.is_wrapping_up = False
-        self.session_timer.start(1000) # Check every second
         
-        # Start Voice Activity Detection Loop
+        # Start Background Listener
         self.vad_stop_event.clear()
-        self.voice.listen_continuous(self.handle_vad_speech, self.vad_stop_event)
+        self.voice.listen_continuous(self.handle_speech, self.vad_stop_event)
 
-    def handle_vad_speech(self, text):
-        # Called from background thread, switch to main thread safely via signal
+    def start_video_writer(self, path):
+        # We need a frame to get the size
+        frame = self.vision.get_current_frame()
+        if frame is not None:
+            h, w, _ = frame.shape
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            self.video_writer = cv2.VideoWriter(path, fourcc, 20.0, (w, h))
+            self.record_timer.start(50) # 20 FPS
+
+    def record_frame(self):
+        if self.video_writer:
+            frame = self.vision.get_current_frame()
+            if frame is not None:
+                self.video_writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+    def handle_speech(self, text):
+        text_lower = text.lower()
+        stop_phrases = ["stop the interview", "wind up the interview", "terminate the session", "let's windup", "finish the interview"]
+        
+        if any(phrase in text_lower for phrase in stop_phrases):
+            self.interview_win.append_chat("System", "End command detected. Processing final feedback...")
+            # Schedule end on main thread
+            QTimer.singleShot(100, self.end_interview_flow)
+            return
+
         self.interview_win.trigger_response_signal.emit(text)
 
     def process_answer(self, text):
-        if not text or text.startswith("["):
-            return
-
-        # Write to log and chat
-        with open("interview_transcript.txt", "a") as f:
-            f.write(f"You: {text}\n")
-            
+        if not text: return
+        with open(self.temp_transcript_path, "a") as f:
+            f.write(f"[{datetime.now().strftime('%H:%M:%S')}] You: {text}\n")
         self.interview_win.append_chat("You", text)
         
-        # Get AI Response, include emotional telemetry
-        current_emotion = self.vision.get_current_emotion()
-        # If the final minute reached, signal AI to wrap up
-        ai_reply = self.ai.get_response(text, current_emotion, wrap_up=self.is_wrapping_up)
-        
-        self.speak_and_log(ai_reply)
+        # Immediate Processing
+        reply = self.ai.get_response(text)
+        self.speak_and_log(reply)
 
     def speak_and_log(self, text):
-        with open("interview_transcript.txt", "a") as f:
-            f.write(f"Interviewer: {text}\n\n")
-        
+        with open(self.temp_transcript_path, "a") as f:
+            f.write(f"[{datetime.now().strftime('%H:%M:%S')}] Interviewer: {text}\n\n")
         self.interview_win.append_chat("Interviewer", text)
         self.voice.speak(text)
 
-    def check_time_constraints(self):
-        elapsed = time.time() - self.start_time
-        # 28 minutes = 1680 seconds
-        if elapsed > 1680 and not self.is_wrapping_up:
-            self.is_wrapping_up = True
-            
-        # 30 minutes = 1800 seconds
-        if elapsed > 1800 and not self.voice.is_speaking:
-            self.end_interview_flow()
-
-    def toggle_video_record(self):
-        if self.interview_win.is_recording_video:
-            # Start
-            frame = self.vision.get_current_frame()
-            if frame is not None:
-                h, w, _ = frame.shape
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                self.video_writer = cv2.VideoWriter('interview_recording.mp4', fourcc, 20.0, (w, h))
-                self.frame_timer.start(50) # 20 FPS
-        else:
-            # Stop
-            self.frame_timer.stop()
-            if self.video_writer:
-                self.video_writer.release()
-                self.video_writer = None
-
-    def record_frame(self):
-        if self.video_writer and self.interview_win.is_recording_video:
-            frame = self.vision.get_current_frame()
-            if frame is not None:
-                # opencv writer expects BGR
-                bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                self.video_writer.write(bgr_frame)
-
     def end_interview_flow(self):
-        self.session_timer.stop()
-        self.frame_timer.stop()
+        self.record_timer.stop()
         self.vad_stop_event.set()
         
         if self.video_writer:
             self.video_writer.release()
             self.video_writer = None
+        
+        self.vision.stop()
+        
+        # Perform Synthesis
+        self.interview_win.mic_status.setText("⏳ Generating Feedback...")
+        
+        with open(self.temp_transcript_path, "r") as f:
+            full_transcript = f.read()
             
-        vision_log = self.vision.stop_and_report()
-        feedback = self.ai.get_final_feedback(vision_log)
+        # Optional video analysis
+        vision_report = self.vision.perform_post_analysis(self.temp_video_path)
+        feedback = self.ai.conduct_full_post_analysis(full_transcript, vision_report)
         
-        with open("interview_feedback.txt", "w") as f:
-            f.write(feedback)
+        # Save Final Files
+        date_str = datetime.now().strftime("%Y%m%d_%H%M")
+        base_name = f"{self.job_role}_{date_str}"
+        final_trans = os.path.join("transcripts", f"{base_name}_trans.txt")
+        final_fb = os.path.join("transcripts", f"{base_name}_fb.txt")
         
-        msg = QMessageBox()
-        msg.setWindowTitle("Interview Feedback")
-        msg.setText("Your Final Feedback Report has been saved to interview_feedback.txt!")
-        msg.setDetailedText(feedback)
-        msg.exec_()
+        shutil.copy(self.temp_transcript_path, final_trans)
+        with open(final_fb, "w") as f: f.write(feedback)
         
+        # Manual Recording Logic
+        if self.interview_win.is_recording_manual:
+            perm_video = os.path.join("recordings", f"{base_name}_recording.mp4")
+            shutil.copy(self.temp_video_path, perm_video)
+            QMessageBox.information(self, "Recording Saved", f"A permanent copy of the interview was saved to recordings/ folder.")
+        
+        # Cleanup temp
+        try: os.remove(self.temp_video_path)
+        except: pass
+        
+        QMessageBox.information(self, "Interview Complete", f"Feedback report saved as {os.path.basename(final_fb)}")
         self.reset_app()
 
     def reset_app(self):
         self.stack.setCurrentWidget(self.setup_win)
         self.interview_win.chat_history.clear()
+
+def random_gender():
+    import random
+    return random.choice(["Male", "Female"])
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
