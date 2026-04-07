@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 # Environments
+.gitignore
 .env
 .env.*
 !.env.example
@@ -13,13 +14,16 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+transcripts/
+recordings/
+
 
 # Logs, Videos, and User Data (Prevents accidental upload of personal info)
 *.mp4
 interview_recording.mp4
 interview_transcript.txt
 interview_feedback.txt
-sample.txt
+sample_jd.txt
 *.log
 
 # Example candidates
