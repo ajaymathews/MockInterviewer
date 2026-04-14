@@ -69,15 +69,16 @@ class MockInterviewerApp(QMainWindow):
     def begin_interview(self, data):
         cv_text = self.extract_cv(data['cv_path'])
         jd_text = data['jd']
-        persona = data['persona']
+        level = data['level']
+        custom_questions = data.get('custom_questions', '')
         
         # Extract job role for naming
         self.job_role = "Interview"
-        if self.ai.model:
-            try:
-                res = self.ai.model.generate_content(f"Extract job title from: {jd_text[:300]}. Return only the title.")
+        try:
+            res = self.ai.generate_content(f"Extract job title from: {jd_text[:300]}. Return only the title.")
+            if res and res.text:
                 self.job_role = res.text.strip().replace(' ', '_').replace('/', '_')
-            except: pass
+        except: pass
 
         # Folders setup
         os.makedirs("transcripts/temp", exist_ok=True)
@@ -95,10 +96,12 @@ class MockInterviewerApp(QMainWindow):
         self.vision.start()
         self.start_video_writer(self.temp_video_path)
         
-        self.voice.set_voice_gender(random_gender(), persona) # Assume utility or random
-        self.interview_win.set_avatar("Male", persona) # Simplified
+        import random
+        tone = random.choice(["Friendly", "Calm", "Strict"])
+        self.voice.set_voice_gender(random_gender(), tone) 
+        self.interview_win.set_avatar("Male", tone) 
         
-        intro = self.ai.start_interview(persona, jd_text, cv_text)
+        intro = self.ai.start_interview(level, jd_text, cv_text, custom_questions, tone=tone)
         self.speak_and_log(intro)
         
         self.stack.setCurrentWidget(self.interview_win)

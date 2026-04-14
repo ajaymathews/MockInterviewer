@@ -1,3 +1,4 @@
+import os
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QTextEdit, QPushButton, QFileDialog, QMessageBox
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtGui import QFont
@@ -17,10 +18,10 @@ class SetupWindow(QWidget):
         layout.addWidget(title)
 
         # Persona
-        layout.addWidget(QLabel("Interviewer Persona:"))
-        self.persona_cb = QComboBox()
-        self.persona_cb.addItems(["Friendly", "Calm", "Strict"])
-        layout.addWidget(self.persona_cb)
+        layout.addWidget(QLabel("Interview Level:"))
+        self.level_cb = QComboBox()
+        self.level_cb.addItems(["HR Level", "Technical Level", "Deep Technical Level"])
+        layout.addWidget(self.level_cb)
 
         # JD
         layout.addWidget(QLabel("Paste Job Description:"))
@@ -36,6 +37,12 @@ class SetupWindow(QWidget):
         cv_layout.addWidget(self.cv_label)
         layout.addLayout(cv_layout)
         self.cv_path = ""
+
+        # Custom Questions
+        layout.addWidget(QLabel("Custom Questions (AI will ask these):"))
+        self.questions_input = QTextEdit()
+        self.questions_input.setPlaceholderText("Enter specific questions you want the interviewer to ask...")
+        layout.addWidget(self.questions_input)
 
         # Start
         self.start_btn = QPushButton("Start Interview")
@@ -53,13 +60,24 @@ class SetupWindow(QWidget):
             self.cv_label.setText(file_path.split("/")[-1])
 
     def start_interview(self):
-        if not self.jd_input.toPlainText() or not self.cv_path:
-            QMessageBox.warning(self, "Missing Data", "Please paste a JD and upload a CV.")
+        # Default CV Logic
+        if not self.cv_path:
+            default_cv = r"Ajay_Mathews_CV_FWD.pdf"
+            if os.path.exists(default_cv):
+                self.cv_path = default_cv
+                print(f"Using default CV: {default_cv}")
+            else:
+                QMessageBox.warning(self, "Missing CV", "No CV uploaded and default CV not found.")
+                return
+
+        if not self.jd_input.toPlainText():
+            QMessageBox.warning(self, "Missing Data", "Please paste a Job Description.")
             return
 
         data = {
-            "persona": self.persona_cb.currentText(),
+            "level": self.level_cb.currentText(),
             "jd": self.jd_input.toPlainText(),
-            "cv_path": self.cv_path
+            "cv_path": self.cv_path,
+            "custom_questions": self.questions_input.toPlainText()
         }
         self.start_interview_signal.emit(data)
